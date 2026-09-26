@@ -17,7 +17,8 @@ Everything here runs on **synthetic data**. Nothing in this repository is real A
 | Four LLM agents (Sensing, Segmentation, Campaign/Promo, Creative) with least-privilege tools | done, live Claude path not yet run against the API |
 | Orchestrator, stock guardrail, approval gate, audit log | done, tested |
 | Merchandising and Sourcing stubs (`docs/INTERFACES.md`) | done |
-| Backtest and live dashboard | week 3 |
+| Backtest on held-out synthetic worlds (`docs/RESULTS.md`) | done |
+| Local server and dashboard wired to the orchestrator | done |
 
 ## Quickstart
 
@@ -69,6 +70,26 @@ is not a language model. It lets the whole pipeline run and be tested without an
 path (`AnthropicClient`) is unit-tested against a fake SDK and has not been run against the real API
 from the build environment, so run it once with your key before relying on it.
 
+## Dashboard
+
+```bash
+python -m aurelia.serve --approval-limit 5000      # http://127.0.0.1:8000
+```
+
+The page lists active spikes, runs the agents through the real orchestrator, shows the decision and
+guardrails, asks a named human to approve when the tier requires it, sends the requests to the
+Merchandising and Sourcing stubs, and streams the audit trail. The backtest evidence panel reads
+`docs/results/backtest_summary.json`. There is no authentication: it is a demo, so approvals only record
+the typed name.
+
+## Backtest in one paragraph
+
+On 477 detected spikes in 20 held-out synthetic worlds, the orchestrator cut spend that chased
+unservable demand by 25% (EUR 7,480 to 5,590 per spike) and added about EUR 1.2k to 2.2k margin per
+spike (roughly 0.6% to 1.1%, 95% interval above zero). It did not reduce lost demand, and it costs a little
+margin when stock is sufficient. The 14-day lift projection (median error 25%) is the limiting factor.
+Full method and assumptions: `docs/RESULTS.md`. Re-run: `python -m aurelia.backtest`.
+
 ## The demo scenario
 
 The last five days of the data contain a scripted competitor price cut that lifts Home demand in
@@ -101,6 +122,9 @@ src/aurelia/orchestrator.py  analyze and execute, approval gate
 src/aurelia/stubs.py      Merchandising and Sourcing stand-ins
 src/aurelia/audit.py      JSON-lines audit trail
 src/aurelia/run.py        command line entry point
+src/aurelia/backtest.py   campaign alone vs orchestrator on held-out worlds
+src/aurelia/serve.py      local server; dashboard in src/aurelia/dashboard/
 docs/INTERFACES.md        hand-off contracts for Merchandising and Sourcing
-docs/BACKLOG.md           weeks 2 and 3
+docs/RESULTS.md           backtest results and assumptions
+docs/BACKLOG.md           plan and status
 ```

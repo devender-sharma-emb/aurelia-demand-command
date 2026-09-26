@@ -27,12 +27,19 @@
 
 ## Week 3: proof and packaging
 
-- [ ] Backtest harness: run "campaign alone" and "with orchestrator" on many injected events
-- [ ] Replace the illustrative KPIs in the deck with backtest results (margin, lost demand, wasted spend,
+- [x] Backtest harness: run "campaign alone" and "with orchestrator" on many injected events
+- [x] Replace the illustrative KPIs in the deck with backtest results (margin, lost demand, wasted spend,
       markdown units)
-- [ ] Connect the dashboard to the live backend
+- [x] Connect the dashboard to the live backend
 - [ ] Re-record the demo, update the deck and the voiceover
 - [ ] Fill in the Capgemini asset mapping
+
+## Next, in priority order
+
+- [ ] Improve the 14-day lift projection (median error 25%). Every point of accuracy flows into margin.
+- [ ] Replace the assumed spend response (units captured proportional to spend) with a fitted curve
+- [ ] Credit early replenishment inside the backtest, which is currently valued at zero
+- [ ] Replace the stubs and the stock draw with real Merchandising and Sourcing integrations and real inventory
 
 ## Risks
 
