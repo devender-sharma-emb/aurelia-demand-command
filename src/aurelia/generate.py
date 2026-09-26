@@ -1,0 +1,162 @@
+"""Seeded generator for the synthetic Aurelia dataset.
+
+Produces five tables:
+  sales      daily units per market and SKU, with injected demand events
+  skus       price and unit cost per SKU
+  inventory  stock position per market and SKU on the last data day
+  sourcing   replenishment options per category
+  events     ground truth for every injected demand event (used to test detection)
+
+Run:  python -m aurelia.generate --out data/synthetic
+"""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from . import config as C
+
+
+def _annual(doy: np.ndarray, amp: float, peak_day: int) -> np.ndarray:
+    return 1.0 + amp * np.cos(2 * np.pi * (doy - peak_day) / 365.25)
+
+
+def _pick_events(rng: np.random.Generator, n_days: int, n_random: int) -> list[dict]:
+    """Scripted demo event first, then random events that never overlap it or each other."""
+    demo_start = n_days - C.DEMO_DAYS_AGO
+    events = [dict(market=C.DEMO_MARKET, category=C.DEMO_CATEGORY, kind="competitor_price_cut",
+                   start=demo_start, duration=60, multiplier=C.DEMO_MULTIPLIER,
+                   ramp=C.DEMO_RAMP_DAYS, scripted=True)]
+    markets, cats = list(C.MARKETS), list(C.CATEGORIES)
+    tries = 0
+    while len(events) < n_random + 1 and tries < 5000:
+        tries += 1
+        ev = dict(market=str(rng.choice(markets)), category=str(rng.choice(cats)),
+                  kind=str(rng.choice(C.EVENT_KINDS)),
+                  start=int(rng.integers(70, n_days - 45)), duration=int(rng.integers(10, 22)),
+                  multiplier=round(float(rng.uniform(1.5, 2.5)), 2), ramp=3, scripted=False)
+        clash = any(e["market"] == ev["market"] and e["category"] == ev["category"]
+                    and abs(e["start"] - ev["start"]) < 60 for e in events)
+        if not clash:
+            events.append(ev)
+    return events
+
+
+def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAYS,
+             n_random_events: int = 24) -> dict[str, pd.DataFrame]:
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range(end=end_date, periods=n_days, freq="D")
+    markets, cats = list(C.MARKETS), list(C.CATEGORIES)
+
+    # SKU master
+    sku_rows = []
+    for c in cats:
+        spec = C.CATEGORIES[c]
+        for i in range(1, C.SKUS_PER_CATEGORY + 1):
+            price = round(float(rng.uniform(*spec["price"])), 2)
+            margin = float(np.clip(spec["margin"] * rng.uniform(0.85, 1.15), 0.05, 0.85))
+            sku_rows.append(dict(sku=f"{c[:3].upper()}-{i:03d}", category=c,
+                                 unit_price=price, unit_cost=round(price * (1 - margin), 2)))
+    skus = pd.DataFrame(sku_rows)
+    cat_idx = skus["category"].map({c: i for i, c in enumerate(cats)}).to_numpy()
+
+    # Base daily demand per market and SKU
+    base = np.empty((len(markets), len(skus)))
+    for s, row in skus.iterrows():
+        lo, hi = C.CATEGORIES[row["category"]]["base"]
+        for m, code in enumerate(markets):
+            base[m, s] = rng.uniform(lo, hi) * C.MARKETS[code] * rng.uniform(0.8, 1.2)
+
+    # Calendar effects
+    dow = np.array(C.WEEKDAY_SHAPE)[dates.dayofweek.to_numpy()]
+    doy = dates.dayofyear.to_numpy()
+    annual = np.stack([_annual(doy, C.CATEGORIES[c]["amp"], C.CATEGORIES[c]["peak_day"]) for c in cats], axis=1)
+
+    # Injected events -> multiplier cube (day, market, category)
+    events = _pick_events(rng, n_days, n_random_events)
+    mult = np.ones((n_days, len(markets), len(cats)))
+    for e in events:
+        m, c = markets.index(e["market"]), cats.index(e["category"])
+        for k in range(e["duration"]):
+            d = e["start"] + k
+            if d >= n_days:
+                break
+            mult[d, m, c] = 1 + (e["multiplier"] - 1) * min(1.0, (k + 1) / e["ramp"])
+
+    lam_base = dow[:, None, None] * annual[:, cat_idx][:, None, :] * base[None, :, :]
+    lam = lam_base * mult[:, :, cat_idx]
+    units = rng.poisson(lam)
+
+    sales = pd.DataFrame({
+        "date": np.repeat(dates.to_numpy(), len(markets) * len(skus)),
+        "market": np.tile(np.repeat(markets, len(skus)), n_days),
+        "sku": np.tile(skus["sku"].to_numpy(), n_days * len(markets)),
+        "units": units.reshape(-1),
+    })
+    sales["category"] = sales["sku"].str[:3].map({c[:3].upper(): c for c in cats})
+    sales = sales[["date", "market", "sku", "category", "units"]]
+
+    # Inventory snapshot on the last data day
+    lam0 = lam_base[-14:].mean(axis=0)  # (market, sku) baseline without events
+    inv_rows = []
+    for m, code in enumerate(markets):
+        for s, row in skus.iterrows():
+            cover = rng.uniform(9, 24)
+            on_hand = int(round(lam0[m, s] * cover))
+            committed = int(round(on_hand * rng.uniform(0.35, 0.60)))
+            on_order = int(round(lam0[m, s] * rng.uniform(0, 14)))
+            inv_rows.append(dict(market=code, dc=C.DC_OF[code], sku=row["sku"], category=row["category"],
+                                 on_hand=on_hand, committed=committed, on_order=on_order,
+                                 on_order_eta_days=int(rng.integers(10, 36))))
+    inventory = pd.DataFrame(inv_rows)
+
+    # Make the demo scenario reproducible: uncommitted Home stock in Market C covers 60% of the 14-day lift.
+    m_demo = markets.index(C.DEMO_MARKET)
+    mask = (inventory["market"] == C.DEMO_MARKET) & (inventory["category"] == C.DEMO_CATEGORY)
+    for idx in inventory.index[mask]:
+        s = int(skus.index[skus["sku"] == inventory.at[idx, "sku"]][0])
+        lift14 = lam0[m_demo, s] * (C.DEMO_MULTIPLIER - 1) * 14
+        inventory.at[idx, "on_hand"] = inventory.at[idx, "committed"] + int(round(C.DEMO_STOCK_COVER * lift14))
+
+    sourcing_rows = []
+    for c in cats:
+        spec = C.CATEGORIES[c]
+        sourcing_rows.append(dict(category=c, mode="sea", lead_days=spec["sea_days"],
+                                  unit_cost_multiplier=1.0, min_order_units=2000, supplier=f"S-{c[:3].upper()}"))
+        sourcing_rows.append(dict(category=c, mode="air", lead_days=spec["air_days"],
+                                  unit_cost_multiplier=C.AIR_COST_MULTIPLIER, min_order_units=200,
+                                  supplier=f"S-{c[:3].upper()}"))
+    sourcing = pd.DataFrame(sourcing_rows)
+
+    ev = pd.DataFrame(events)
+    ev.insert(0, "event_id", [f"EV-{i:03d}" for i in range(len(ev))])
+    ev["start_date"] = [dates[e["start"]].date().isoformat() for e in events]
+    ev = ev.rename(columns={"duration": "duration_days", "ramp": "ramp_days"}).drop(columns="start")
+
+    return dict(sales=sales, skus=skus, inventory=inventory, sourcing=sourcing, events=ev)
+
+
+def write(tables: dict[str, pd.DataFrame], out: Path) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    tables["sales"].to_csv(out / "sales.csv.gz", index=False)
+    for name in ("skus", "inventory", "sourcing", "events"):
+        tables[name].to_csv(out / f"{name}.csv", index=False)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--out", default="data/synthetic")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--end-date", default="2026-09-25")
+    p.add_argument("--events", type=int, default=24)
+    a = p.parse_args()
+    tables = generate(seed=a.seed, end_date=a.end_date, n_random_events=a.events)
+    write(tables, Path(a.out))
+    print({k: len(v) for k, v in tables.items()}, "->", a.out)
+
+
+if __name__ == "__main__":
+    main()
