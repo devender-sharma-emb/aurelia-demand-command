@@ -120,6 +120,15 @@ def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAY
     sales["category"] = sales["sku"].str[:3].map({c[:3].upper(): c for c in cats})
     sales = sales[["date", "market", "sku", "category", "units"]]
 
+    # Ground truth for the backtest: expected daily units with and without the injected events.
+    baseline = pd.DataFrame({
+        "date": np.repeat(dates.to_numpy(), len(markets) * len(cats)),
+        "market": np.tile(np.repeat(markets, len(cats)), n_days),
+        "category": np.tile(cats, n_days * len(markets)),
+        "baseline_units": lam_b_cm.reshape(-1).round(2),
+        "expected_units": lam_cm.reshape(-1).round(2),
+    })
+
     # Inventory snapshot on the last data day
     lam0 = lam_base[-14:].mean(axis=0)  # (market, sku) baseline without events
     inv_rows = []
@@ -157,13 +166,15 @@ def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAY
     ev["start_date"] = [dates[e["start"]].date().isoformat() for e in events]
     ev = ev.rename(columns={"duration": "duration_days", "ramp": "ramp_days"}).drop(columns="start")
 
-    return dict(sales=sales, skus=skus, inventory=inventory, sourcing=sourcing, events=ev, segments=segments)
+    return dict(sales=sales, skus=skus, inventory=inventory, sourcing=sourcing, events=ev, segments=segments,
+                baseline=baseline)
 
 
 def write(tables: dict[str, pd.DataFrame], out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     tables["sales"].to_csv(out / "sales.csv.gz", index=False)
     tables["segments"].to_csv(out / "segments.csv.gz", index=False)
+    tables["baseline"].to_csv(out / "baseline.csv.gz", index=False)
     for name in ("skus", "inventory", "sourcing", "events"):
         tables[name].to_csv(out / f"{name}.csv", index=False)
 

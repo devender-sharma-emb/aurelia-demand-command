@@ -16,7 +16,7 @@ def _inputs(uncommitted=3000, lift=5000, on_order=0, eta=24, margin_pct=40.0, mp
 
 
 def test_scales_spend_to_stock_and_frees_the_rest():
-    d = plan_campaign(**_inputs(uncommitted=3000, lift=5000), budget=40_000)
+    d = plan_campaign(**_inputs(uncommitted=3000, lift=5000), budget=40_000, sizing_factor=1.0)
     assert d["coverage"] == 0.6 and d["campaign_scale"] == 0.6
     assert d["spend_approved_eur"] == 24_000 and d["freed_budget_eur"] == 16_000
     assert d["allocation_units"] == 3000
@@ -27,9 +27,9 @@ def test_scales_spend_to_stock_and_frees_the_rest():
 
 
 def test_approval_gate_at_the_limit():
-    over = plan_campaign(**_inputs(uncommitted=3000), budget=40_000)      # freed 16,000
+    over = plan_campaign(**_inputs(uncommitted=3000), budget=40_000, sizing_factor=1.0)      # freed 16,000
     assert over["tier"] == "needs_approval"
-    at = plan_campaign(**_inputs(uncommitted=3125), budget=40_000)        # freed exactly 15,000
+    at = plan_campaign(**_inputs(uncommitted=3125), budget=40_000, sizing_factor=1.0)        # freed exactly 15,000
     assert at["freed_budget_eur"] == C.APPROVAL_LIMIT_EUR and at["tier"] == "auto_execute"
 
 
@@ -101,3 +101,18 @@ def test_validate_creative_rejects_banned_claims():
     assert ok["approved"] and not issues
     bad, issues = validate_creative(dict(headline="The cheapest home deals, guaranteed", body="x"))
     assert not bad["approved"] and "banned claims" in issues[0]
+
+
+def test_sizing_factor_makes_the_cut_more_cautious_but_never_raises_coverage():
+    plain = plan_campaign(**_inputs(uncommitted=3000, lift=5000), sizing_factor=1.0)
+    cautious = plan_campaign(**_inputs(uncommitted=3000, lift=5000), sizing_factor=0.8)
+    assert cautious["coverage"] == plain["coverage"] == 0.6           # reported coverage is vs the projection
+    assert cautious["campaign_scale"] == 0.75 > plain["campaign_scale"]
+    assert cautious["spend_approved_eur"] > plain["spend_approved_eur"]
+    full = plan_campaign(**_inputs(uncommitted=4500, lift=5000), sizing_factor=0.8)
+    assert full["campaign_scale"] == 1.0                                 # capped
+
+
+def test_allocation_request_never_exceeds_uncommitted_stock():
+    d = plan_campaign(**_inputs(uncommitted=3000, lift=5000), sizing_factor=0.8)   # scale 0.75 -> 3750 units implied
+    assert d["allocation_units"] == 3000

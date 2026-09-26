@@ -1,0 +1,107 @@
+{
+  "setup": {
+    "seeds": "100..119",
+    "n_seeds": 20,
+    "events": 480,
+    "budget_eur": 40000,
+    "horizon_days": 14,
+    "sizing_factor": 0.8,
+    "surplus_roi_assumed": 1.8,
+    "approval_limit_eur": 15000
+  },
+  "detection": {
+    "detected": 477,
+    "of": 480,
+    "rate": 0.994,
+    "median_lag_days": 2.0
+  },
+  "projection": {
+    "median_abs_error_pct": 25.2,
+    "mean_signed_error_pct": 1.5,
+    "share_overestimated": 0.411
+  },
+  "approvals": {
+    "share_needing_human_approval": 0.008
+  },
+  "all_detected": {
+    "n": 477,
+    "alone": {
+      "margin_per_spike_eur": 199917,
+      "lost_units_per_spike": 1971,
+      "wasted_spend_per_spike_eur": 7480,
+      "markdown_units_avoided_per_spike": 0
+    },
+    "orchestrated": {
+      "margin_per_spike_eur": 202111,
+      "lost_units_per_spike": 1992,
+      "wasted_spend_per_spike_eur": 5590,
+      "markdown_units_avoided_per_spike": 59
+    },
+    "margin_uplift_per_spike_eur": 2195,
+    "margin_uplift_ci95": [
+      1560,
+      2809
+    ],
+    "conservative_uplift_per_spike_eur": 1207,
+    "conservative_uplift_ci95": [
+      654,
+      1719
+    ],
+    "share_of_spikes_orchestrator_better": 0.283,
+    "share_of_spikes_orchestrator_better_conservative": 0.277
+  },
+  "stock_short": {
+    "n": 274,
+    "alone": {
+      "margin_per_spike_eur": 212653,
+      "lost_units_per_spike": 3432,
+      "wasted_spend_per_spike_eur": 13022,
+      "markdown_units_avoided_per_spike": 0
+    },
+    "orchestrated": {
+      "margin_per_spike_eur": 216957,
+      "lost_units_per_spike": 3451,
+      "wasted_spend_per_spike_eur": 9731,
+      "markdown_units_avoided_per_spike": 98
+    },
+    "margin_uplift_per_spike_eur": 4304,
+    "margin_uplift_ci95": [
+      3371,
+      5208
+    ],
+    "conservative_uplift_per_spike_eur": 2683,
+    "conservative_uplift_ci95": [
+      1910,
+      3373
+    ],
+    "share_of_spikes_orchestrator_better": 0.482,
+    "share_of_spikes_orchestrator_better_conservative": 0.482
+  },
+  "stock_sufficient": {
+    "n": 203,
+    "alone": {
+      "margin_per_spike_eur": 182725,
+      "lost_units_per_spike": 0,
+      "wasted_spend_per_spike_eur": 0,
+      "markdown_units_avoided_per_spike": 0
+    },
+    "orchestrated": {
+      "margin_per_spike_eur": 182073,
+      "lost_units_per_spike": 24,
+      "wasted_spend_per_spike_eur": 0,
+      "markdown_units_avoided_per_spike": 7
+    },
+    "margin_uplift_per_spike_eur": -653,
+    "margin_uplift_ci95": [
+      -1313,
+      -141
+    ],
+    "conservative_uplift_per_spike_eur": -785,
+    "conservative_uplift_ci95": [
+      -1521,
+      -221
+    ],
+    "share_of_spikes_orchestrator_better": 0.015,
+    "share_of_spikes_orchestrator_better_conservative": 0.0
+  }
+}

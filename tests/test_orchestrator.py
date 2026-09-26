@@ -18,7 +18,8 @@ def test_demo_scenario_end_to_end_auto_execute(world):
     plan = orch.analyze(C.DEMO_MARKET, C.DEMO_CATEGORY)
     d = plan["decision"]
     assert plan["status"] == "ready" and d["tier"] == "auto_execute"
-    assert 0.5 < d["coverage"] < 0.85 and d["campaign_scale"] == d["coverage"]
+    assert 0.5 < d["coverage"] < 0.85
+    assert d["campaign_scale"] == pytest.approx(min(1.0, d["coverage"] / C.LIFT_SIZING_FACTOR), abs=1e-3)
     assert plan["segment_mix"]["value_seeking_share_of_uplift"] > 0.6
     assert [s["agent"] for s in plan["steps"]] == ["sensing", "segmentation", "orchestrator", "campaign", "creative"]
 
@@ -33,7 +34,8 @@ def test_demo_scenario_end_to_end_auto_execute(world):
     assert [e["seq"] for e in audit.entries] == list(range(1, len(audit.entries) + 1))
 
 
-def test_large_budget_needs_human_approval_and_nothing_is_sent_before_it(world):
+def test_large_budget_needs_human_approval_and_nothing_is_sent_before_it(world, monkeypatch):
+    monkeypatch.setattr(C, "APPROVAL_LIMIT_EUR", 5_000)
     audit = AuditLog()
     orch = _orch(world, audit=audit)
     plan = orch.analyze(C.DEMO_MARKET, C.DEMO_CATEGORY, budget=60_000)

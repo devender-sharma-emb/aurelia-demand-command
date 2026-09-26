@@ -14,7 +14,7 @@ from . import config as C
 
 def plan_campaign(*, spike: dict, inventory: dict, margin: dict, other_inventory: list[dict],
                   get_sourcing: Callable[[int], list[dict]], budget: float = C.DEFAULT_BUDGET_EUR,
-                  horizon_days: int = C.HORIZON_DAYS) -> dict:
+                  horizon_days: int = C.HORIZON_DAYS, sizing_factor: float = C.LIFT_SIZING_FACTOR) -> dict:
     """Size a campaign to the stock that can serve it and apply the guardrails.
 
     spike             detect_demand_spikes result for one market and category
@@ -31,7 +31,8 @@ def plan_campaign(*, spike: dict, inventory: dict, margin: dict, other_inventory
     inbound = inventory["on_order"] if inventory["on_order_eta_days"] <= horizon_days else 0
     supply = inventory["uncommitted"] + inbound
     coverage = supply / lift
-    scale = min(1.0, coverage)
+    # Size to a cautious lift: cutting spend on a low projection costs more margin than the spend saves.
+    scale = min(1.0, supply / (lift * sizing_factor))
 
     # 2. Scale spend, free the rest
     spend = round(budget * scale)
@@ -80,12 +81,12 @@ def plan_campaign(*, spike: dict, inventory: dict, margin: dict, other_inventory
     expected_margin = sold * mpu - spend + (realloc["amount_eur"] * (C.SURPLUS_ROI - 1) if realloc else 0)
     alone_margin = sold * mpu - budget
     return dict(
-        market=spike["market"], category=spike["category"], horizon_days=horizon_days,
+        market=spike["market"], category=spike["category"], horizon_days=horizon_days, sizing_factor=sizing_factor,
         projected_lift_units=lift, uncommitted_units=inventory["uncommitted"], inbound_in_horizon_units=inbound,
         supply_in_horizon_units=supply, coverage=round(coverage, 3), campaign_scale=round(scale, 3),
         budget_requested_eur=round(budget), spend_approved_eur=spend, freed_budget_eur=freed,
         reallocation=realloc, held_reserve_eur=held, replenishment=replen,
-        allocation_units=round(lift * scale),
+        allocation_units=min(round(lift * scale), inventory["uncommitted"]),
         guardrails=dict(
             margin_floor=dict(passed=margin_ok, margin_pct=margin["margin_pct"], floor_pct=C.MARGIN_FLOOR_PCT),
             budget_cap=dict(passed=cap_ok, budget_eur=round(budget), cap_eur=C.BUDGET_CAP_EUR),

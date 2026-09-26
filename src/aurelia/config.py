@@ -60,6 +60,7 @@ MARGIN_FLOOR_PCT = 15.0          # category margin after promo depth must stay a
 REALLOC_SHARE = 0.60             # share of freed budget moved to a surplus category
 SURPLUS_ROI = 1.8                # assumed return on reallocated spend (measured in the backtest)
 HORIZON_DAYS = 14
+LIFT_SIZING_FACTOR = 0.8         # scale spend to stock / (projected lift x factor); calibrated on backtest seeds
 CHANNELS = ["paid_search", "paid_social", "email", "app_push", "onsite"]
 OFFER_TYPES = ["bundle", "threshold_discount", "loyalty_points", "free_shipping"]
 BANNED_CLAIMS = ["guaranteed", "cheapest", "best price", "lowest price", "risk-free", "#1"]

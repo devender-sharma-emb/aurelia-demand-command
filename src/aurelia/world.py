@@ -12,7 +12,9 @@ from .detect import active_spike, find_spikes, score
 
 class RetailWorld:
     def __init__(self, sales: pd.DataFrame, skus: pd.DataFrame, inventory: pd.DataFrame,
-                 sourcing: pd.DataFrame, events: pd.DataFrame, segments: pd.DataFrame | None = None):
+                 sourcing: pd.DataFrame, events: pd.DataFrame, segments: pd.DataFrame | None = None,
+                 baseline: pd.DataFrame | None = None):
+        self.baseline = baseline  # ground truth, used only by the backtest
         self.sales = sales.assign(date=pd.to_datetime(sales["date"]))
         self.skus, self.inventory, self.sourcing, self.events = skus, inventory, sourcing, events
         self.segments = None if segments is None else segments.assign(date=pd.to_datetime(segments["date"]))
@@ -24,7 +26,8 @@ class RetailWorld:
         seg = p / "segments.csv.gz"
         return cls(pd.read_csv(p / "sales.csv.gz"), pd.read_csv(p / "skus.csv"),
                    pd.read_csv(p / "inventory.csv"), pd.read_csv(p / "sourcing.csv"),
-                   pd.read_csv(p / "events.csv"), pd.read_csv(seg) if seg.exists() else None)
+                   pd.read_csv(p / "events.csv"), pd.read_csv(seg) if seg.exists() else None,
+                   pd.read_csv(p / "baseline.csv.gz") if (p / "baseline.csv.gz").exists() else None)
 
     @property
     def as_of(self) -> pd.Timestamp:

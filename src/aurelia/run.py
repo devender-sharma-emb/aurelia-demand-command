@@ -2,7 +2,8 @@
 
   python -m aurelia.run --market C --category home                  # offline stand-in, no API key
   python -m aurelia.run --market C --category home --live           # Claude via ANTHROPIC_API_KEY
-  python -m aurelia.run --market C --category home --budget 60000 --approve "J. Doe"
+  python -m aurelia.run --market C --category home --approval-limit 5000               # stops for approval
+  python -m aurelia.run --market C --category home --approval-limit 5000 --approve "J. Doe"
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import argparse
 import json
 from pathlib import Path
 
+from . import config as C
 from .audit import AuditLog
 from .generate import generate
 from .llm import AnthropicClient, OfflineClient
@@ -25,8 +27,11 @@ def main() -> None:
     p.add_argument("--budget", type=float, default=40_000)
     p.add_argument("--live", action="store_true", help="use Claude instead of the offline stand-in")
     p.add_argument("--approve", metavar="NAME", help="approve the plan on behalf of NAME if approval is needed")
+    p.add_argument("--approval-limit", type=float, help="override the EUR limit above which a human must approve")
     p.add_argument("--audit", default="data/audit.jsonl")
     a = p.parse_args()
+    if a.approval_limit is not None:
+        C.APPROVAL_LIMIT_EUR = a.approval_limit
 
     world = RetailWorld.from_dir(a.data) if Path(a.data, "sales.csv.gz").exists() else RetailWorld(**generate())
     audit = AuditLog(a.audit)
