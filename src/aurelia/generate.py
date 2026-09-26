@@ -78,6 +78,7 @@ def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAY
     # Injected events -> multiplier cube (day, market, category)
     events = _pick_events(rng, n_days, n_random_events)
     mult = np.ones((n_days, len(markets), len(cats)))
+    kind_cube = np.full((n_days, len(markets), len(cats)), -1)
     for e in events:
         m, c = markets.index(e["market"]), cats.index(e["category"])
         for k in range(e["duration"]):
@@ -85,10 +86,30 @@ def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAY
             if d >= n_days:
                 break
             mult[d, m, c] = 1 + (e["multiplier"] - 1) * min(1.0, (k + 1) / e["ramp"])
+            kind_cube[d, m, c] = C.EVENT_KINDS.index(e["kind"])
 
     lam_base = dow[:, None, None] * annual[:, cat_idx][:, None, :] * base[None, :, :]
     lam = lam_base * mult[:, :, cat_idx]
     units = rng.poisson(lam)
+
+    # Modelled segment attribution (no extra random draws, so sales are unchanged by this block).
+    def by_cat(a):
+        return np.stack([a[:, :, cat_idx == ci].sum(axis=2) for ci in range(len(cats))], axis=2)
+
+    b = np.array(C.SEGMENT_BASE_SHARE)
+    u_by_kind = np.array([C.SEGMENT_UPLIFT_SHARE[k] for k in C.EVENT_KINDS])
+    lam_b_cm, lam_cm, units_cm = by_cat(lam_base), by_cat(lam), by_cat(units)
+    u = np.where(kind_cube[..., None] >= 0, u_by_kind[np.clip(kind_cube, 0, None)], b)
+    share = (lam_b_cm[..., None] * b + (lam_cm - lam_b_cm)[..., None] * u) / lam_cm[..., None]
+    seg_units = units_cm[..., None] * share
+    n_s = len(C.SEGMENTS)
+    segments = pd.DataFrame({
+        "date": np.repeat(dates.to_numpy(), len(markets) * len(cats) * n_s),
+        "market": np.tile(np.repeat(markets, len(cats) * n_s), n_days),
+        "category": np.tile(np.repeat(cats, n_s), n_days * len(markets)),
+        "segment": np.tile(C.SEGMENTS, n_days * len(markets) * len(cats)),
+        "units": seg_units.reshape(-1).round(2),
+    })
 
     sales = pd.DataFrame({
         "date": np.repeat(dates.to_numpy(), len(markets) * len(skus)),
@@ -136,12 +157,13 @@ def generate(seed: int = 42, end_date: str = "2026-09-25", n_days: int = C.N_DAY
     ev["start_date"] = [dates[e["start"]].date().isoformat() for e in events]
     ev = ev.rename(columns={"duration": "duration_days", "ramp": "ramp_days"}).drop(columns="start")
 
-    return dict(sales=sales, skus=skus, inventory=inventory, sourcing=sourcing, events=ev)
+    return dict(sales=sales, skus=skus, inventory=inventory, sourcing=sourcing, events=ev, segments=segments)
 
 
 def write(tables: dict[str, pd.DataFrame], out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     tables["sales"].to_csv(out / "sales.csv.gz", index=False)
+    tables["segments"].to_csv(out / "segments.csv.gz", index=False)
     for name in ("skus", "inventory", "sourcing", "events"):
         tables[name].to_csv(out / f"{name}.csv", index=False)
 

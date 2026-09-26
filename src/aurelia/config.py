@@ -40,3 +40,26 @@ DEMO_DAYS_AGO = 5          # event starts this many days before the last data da
 DEMO_STOCK_COVER = 0.60    # uncommitted stock covers this share of the 14-day lift
 
 AIR_COST_MULTIPLIER = 1.18
+
+# Customer segments: share of baseline demand, and share of the uplift by event kind.
+# For a competitor price cut, value_seeker_repeat + promo_hunter carry 68% of the uplift.
+SEGMENTS = ["loyal_full_price", "value_seeker_repeat", "promo_hunter", "occasional"]
+SEGMENT_BASE_SHARE = [0.40, 0.25, 0.10, 0.25]
+SEGMENT_UPLIFT_SHARE = {
+    "competitor_price_cut": [0.12, 0.50, 0.18, 0.20],
+    "social_trend":         [0.15, 0.10, 0.10, 0.65],
+    "weather":              [0.30, 0.15, 0.05, 0.50],
+    "local_event":          [0.20, 0.10, 0.10, 0.60],
+}
+
+# Orchestrator policy. Assumptions are named so the backtest can report against them.
+DEFAULT_BUDGET_EUR = 40_000
+BUDGET_CAP_EUR = 60_000          # requests above this are blocked
+APPROVAL_LIMIT_EUR = 15_000      # budget changes above this need a human
+MARGIN_FLOOR_PCT = 15.0          # category margin after promo depth must stay above this
+REALLOC_SHARE = 0.60             # share of freed budget moved to a surplus category
+SURPLUS_ROI = 1.8                # assumed return on reallocated spend (measured in the backtest)
+HORIZON_DAYS = 14
+CHANNELS = ["paid_search", "paid_social", "email", "app_push", "onsite"]
+OFFER_TYPES = ["bundle", "threshold_discount", "loyalty_points", "free_shipping"]
+BANNED_CLAIMS = ["guaranteed", "cheapest", "best price", "lowest price", "risk-free", "#1"]

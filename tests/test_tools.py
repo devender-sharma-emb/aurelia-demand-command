@@ -13,6 +13,7 @@ def test_every_tool_dispatches_and_is_json_serialisable(world):
         "get_inventory_position": dict(market="C", category="home"),
         "get_sourcing_options": dict(category="home", units_needed=2500),
         "get_margin": dict(market="C", category="home"),
+        "get_segment_mix": dict(market="C", category="home"),
     }
     assert set(calls) == {t["name"] for t in TOOLS}
     for name, args in calls.items():

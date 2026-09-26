@@ -7,22 +7,24 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as C
-from .detect import active_spike, find_spikes
+from .detect import active_spike, find_spikes, score
 
 
 class RetailWorld:
     def __init__(self, sales: pd.DataFrame, skus: pd.DataFrame, inventory: pd.DataFrame,
-                 sourcing: pd.DataFrame, events: pd.DataFrame):
+                 sourcing: pd.DataFrame, events: pd.DataFrame, segments: pd.DataFrame | None = None):
         self.sales = sales.assign(date=pd.to_datetime(sales["date"]))
         self.skus, self.inventory, self.sourcing, self.events = skus, inventory, sourcing, events
+        self.segments = None if segments is None else segments.assign(date=pd.to_datetime(segments["date"]))
         self._series: dict[tuple[str, str], pd.Series] = {}
 
     @classmethod
     def from_dir(cls, path: str | Path) -> "RetailWorld":
         p = Path(path)
+        seg = p / "segments.csv.gz"
         return cls(pd.read_csv(p / "sales.csv.gz"), pd.read_csv(p / "skus.csv"),
                    pd.read_csv(p / "inventory.csv"), pd.read_csv(p / "sourcing.csv"),
-                   pd.read_csv(p / "events.csv"))
+                   pd.read_csv(p / "events.csv"), pd.read_csv(seg) if seg.exists() else None)
 
     @property
     def as_of(self) -> pd.Timestamp:
@@ -98,6 +100,28 @@ class RetailWorld:
                                     projected_incremental_14d=sp["projected_incremental_14d"],
                                     projection_basis=sp["projection_basis"]))
         return sorted(out, key=lambda r: -r["projected_incremental_14d"])
+
+    def segment_mix(self, market: str, category: str) -> dict:
+        """Baseline segment shares, and who drives the uplift when a spike is active."""
+        self._check(market, category)
+        if self.segments is None:
+            raise ValueError("this dataset has no segment table")
+        sel = self.segments[(self.segments["market"] == market) & (self.segments["category"] == category)]
+        wide = sel.pivot_table(index="date", columns="segment", values="units", aggfunc="sum").asfreq("D")
+        share = wide.div(wide.sum(axis=1), axis=0)
+        baseline = share.tail(120).median()
+        baseline = baseline / baseline.sum()
+        uplift = None
+        if active_spike(self.series(market, category)):
+            resid = pd.Series({s: max(float(score(wide[s])["resid"].tail(3).sum()), 0.0) for s in wide.columns})
+            if resid.sum() > 0:
+                uplift = resid / resid.sum()
+        vs = None if uplift is None else float(uplift.get("value_seeker_repeat", 0) + uplift.get("promo_hunter", 0))
+        return dict(market=market, category=category, as_of=str(self.as_of.date()),
+                    baseline_share={k: round(float(v), 3) for k, v in baseline.items()},
+                    uplift_share=None if uplift is None else {k: round(float(v), 3) for k, v in uplift.items()},
+                    value_seeking_share_of_uplift=None if vs is None else round(vs, 3),
+                    note="Segment attribution is modelled, not observed.")
 
     def historical_spikes(self, market: str, category: str) -> list[dict]:
         return find_spikes(self.series(market, category))

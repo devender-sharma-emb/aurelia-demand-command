@@ -40,6 +40,13 @@ TOOLS: list[dict] = [
             "required": ["category", "units_needed"]},
     },
     {
+        "name": "get_segment_mix",
+        "description": ("Customer segment shares for a market and category. When a spike is active, also "
+                        "shows which segments drive the uplift and the value-seeking share of it."),
+        "input_schema": {"type": "object", "properties": {"market": _MARKET, "category": _CATEGORY},
+                         "required": ["market", "category"]},
+    },
+    {
         "name": "get_margin",
         "description": "Average unit price, cost and margin for a market and category, weighted by recent sales.",
         "input_schema": {"type": "object", "properties": {"market": _MARKET, "category": _CATEGORY},
@@ -59,6 +66,8 @@ def dispatch(world: RetailWorld, name: str, args: dict | None = None):
         return world.inventory_position(a["market"], a["category"])
     if name == "get_sourcing_options":
         return world.sourcing_options(a["category"], int(a["units_needed"]))
+    if name == "get_segment_mix":
+        return world.segment_mix(a["market"], a["category"])
     if name == "get_margin":
         return world.margin(a["market"], a["category"])
     raise ValueError(f"unknown tool {name!r}; valid: {[t['name'] for t in TOOLS]}")
